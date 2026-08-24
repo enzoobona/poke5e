@@ -48,6 +48,7 @@ export type EncounterTrainer = {
 	initiative?: number,
 	initiativeRoll?: InitiativeRoll,
 	activePokemon?: ActivePokemon,
+	linkedTrainerId?: string,
 }
 
 export type CombatCreature = {
@@ -67,6 +68,7 @@ export type CombatTrainerEntry = {
 	numberOfPokemon: number,
 	initiative: number,
 	activePokemon?: { species: PokemonSpecies, level: number },
+	linkedTrainerId?: string,
 }
 
 
