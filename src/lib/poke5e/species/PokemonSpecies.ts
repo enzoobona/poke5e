@@ -7,7 +7,7 @@ import { Speeds } from "$lib/dnd/movement"
 import { Senses } from "$lib/dnd/senses"
 import { SkillRanks } from "$lib/dnd/skills"
 import { SpeciesForms } from "$lib/poke5e/forms"
-import type { Habitat } from "$lib/poke5e/habitat"
+import { Region, type Habitat } from "$lib/poke5e/habitat"
 import { AbilityPool } from "$lib/pokemon/ability"
 import { PokemonType } from "$lib/pokemon/types"
 import type { MarkdownString } from "$lib/ui/rendering/markdown"
@@ -77,6 +77,12 @@ export class PokemonSpecies extends DataClass<{
 
 	numberAsString(): string {
 		return `#${this.data.number.toString().padStart(4, "0")}`
+	}
+
+	get generation(): number | undefined {
+		const regionName = this.data.habitat.nativeRegion
+		const index = (Region.CanonList as readonly string[]).indexOf(regionName)
+		return index !== -1 ? index + 1 : undefined
 	}
 
 	/**

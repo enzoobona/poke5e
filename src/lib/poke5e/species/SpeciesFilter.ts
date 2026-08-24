@@ -21,6 +21,7 @@ export class SpeciesFilter {
 		eggGroup: string,
 		biome: string,
 		nativeRegion: Region,
+		generation: number | "",
 	} = {
 			name: "",
 			size: "",
@@ -30,6 +31,7 @@ export class SpeciesFilter {
 			eggGroup: "",
 			biome: "",
 			nativeRegion: "",
+			generation: "",
 		}
 
 	count(): number {
@@ -82,6 +84,11 @@ export class SpeciesFilter {
 		return this
 	}
 
+	generation(value: number | ""): SpeciesFilter {
+		this.filters.generation = value
+		return this
+	}
+
 	apply = (species: PokemonSpecies): boolean => {
 		return strings.includesSearch([species.name, ...species.aliases], this.filters.name)
 			&& (this.filters.size === "" || species.size === this.filters.size)
@@ -91,5 +98,6 @@ export class SpeciesFilter {
 			&& (this.filters.eggGroup === "" || species.eggGroups.includes(this.filters.eggGroup))
 			&& (this.filters.biome === "" || species.habitat.biomes.includes(this.filters.biome))
 			&& (this.filters.nativeRegion === "" || strings.caseInsensitiveEqual(this.filters.nativeRegion, species.habitat.nativeRegion))
+			&& (this.filters.generation === "" || species.generation === this.filters.generation)
 	}
 }
