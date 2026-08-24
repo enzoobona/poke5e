@@ -28,10 +28,17 @@
 	import { TagList } from "$lib/poke5e/tags"
 	import type { Trainer, LearnedMove, TrainerPokemon } from "$lib/trainers/types"
 	import { ListHeading } from "$lib/ui/page"
+	import { ensureDataPersistance } from "$lib/site/storage"
+	import { trainers } from "$lib/trainers/trainers"
+	import { get } from "svelte/store"
+	import { Url } from "$lib/site/url"
 
 	const NONE = ""
 	const noneOption = { name: "- None -", value: NONE }
 	const primaryTypeOptions = [noneOption].concat(PokemonType.list.map((it) => ({ name: it, value: it })))
+	const generationOptions = [{ name: "- Any -", value: "" }].concat(
+		Array.from({ length: 9 }, (_, i) => ({ name: `Gen ${i + 1}`, value: String(i + 1) })),
+	)
 	const attackTypeOptions = [{ name: "Typeless (no multiplier)", value: "" }].concat(PokemonType.list.map((it) => ({ name: PokemonType.name(it), value: it })))
 	const difficultyOptions = [
 		{name: "Low", value: "low"},
@@ -83,6 +90,7 @@
 	let pokemonType: PokeType
 	let regionType: "native" | "found in" = "native"
 	let regionName: string = ""
+	let generation: string = ""
 	let arePokemonLimited: "yes" | "no" = "no"
 	let pokemonLimit: number = 1
 	let encounter = Encounter.createEmpty()
@@ -256,6 +264,10 @@
 		confirmPromptResolve = null
 	}
 
+	onMount(() => {
+		ensureDataPersistance()
+	})
+
 	onMount(async () => {
 		try {
 			presets = await encounterPresetProvider.allPresets()
@@ -355,6 +367,8 @@
 		}
 
 		encounter = Encounter.addPokemon(encounter, pokemon, level ?? 1)
+		console.log(pokemon.generation)
+		console.log(pokemon.habitat.nativeRegion)
 		noMatches = false
 	}
 
@@ -394,6 +408,60 @@
 		reviewModalOpen = false
 	}
 
+	let linkTrainerModalOpen = false
+	let linkTrainerListValue: Trainer[] | undefined = undefined
+	let linkTrainerListLoading = false
+	let linkTrainerSearching = false
+	let linkTrainerError = ""
+
+	const openLinkTrainerModal = () => {
+		linkTrainerError = ""
+		linkTrainerListValue = undefined
+		linkTrainerListLoading = true
+		linkTrainerModalOpen = true
+
+		trainers.all()
+			.then((store) => {
+				if (!store) {
+					linkTrainerError = "No se pudo cargar la lista de entrenadores."
+					return
+				}
+				linkTrainerListValue = get(store) as Trainer[]
+			})
+			.catch(() => {
+				linkTrainerError = "Ocurrió un error al buscar tus entrenadores."
+			})
+			.finally(() => {
+				linkTrainerListLoading = false
+			})
+	}
+
+	const closeLinkTrainerModal = () => {
+		linkTrainerModalOpen = false
+	}
+
+	const selectLinkedTrainer = async (trainerInfo: { readKey: string, name: string, level: { data: number } }) => {
+		linkTrainerSearching = true
+		linkTrainerError = ""
+		try {
+			const store = await trainers.get(trainerInfo.readKey)
+			if (!store) {
+				linkTrainerError = "No se pudo cargar ese entrenador."
+				return
+			}
+			const value = get(store)
+			partyPlayers = [...partyPlayers, {
+				id: uniqueId(),
+				name: value.info.name,
+				level: value.info.level.data,
+				numberOfPokemon: value.pokemon.length,
+				linkedTrainerId: trainerInfo.readKey,
+			}]
+			linkTrainerModalOpen = false
+		} finally {
+			linkTrainerSearching = false
+		}
+	}
 
 	const generateEncounter = async () => {
 		// Generate default party if there is none
@@ -413,6 +481,7 @@
 			const pokemon = currentSpecies[i]
 			const hasBiome = biome === "" || pokemon.data.habitat.biomes.includes(biome)
 			const hasType = !pokemonType || pokemon.data.type.includes(pokemonType)
+			const hasGeneration = generation === "" || (pokemon.generation != null && String(pokemon.generation) === generation)
 
 			let hasRegion = true
 			if (regionType === "native") {
@@ -421,7 +490,7 @@
 				hasRegion = regionName?.trim() === "" || pokemon.data.habitat.regions.some((region) => strings.caseInsensitiveEqual(region, regionName))
 			}
 
-			if (hasBiome && hasType && hasRegion) {
+			if (hasBiome && hasType && hasRegion && hasGeneration) {
 				pokemonPool.push(pokemon)
 			}
 		}
@@ -476,6 +545,7 @@
 			activePokemon: p.activePokemon
 				? { species: new PokemonSpecies(p.activePokemon.species), level: p.activePokemon.level }
 				: undefined,
+			linkedTrainerId: p.linkedTrainerId,
 		}))
 
 		combatants = [...creatures, ...trainerEntries]
@@ -738,6 +808,9 @@
 												{player.activePokemon ? "Change" : "Set"} Active Pokémon
 											</Button>
 										</div>
+										{#if player.linkedTrainerId}
+											<p class="linked-note">Vinculado a Trainer {player.linkedTrainerId}</p>
+										{/if}
 									</Removable>
 								</div>
 							{/each}
@@ -745,13 +818,19 @@
 					{:else}
 						<p>No Players in the Party.</p>
 					{/if}
-					<Button variant="success" on:click={addPlayer} width="full" >Add Player</Button>
+					<div class="players-actions">
+						<Button variant="success" on:click={addPlayer} width="full">Add Player</Button>
+						<Button variant="ghost" on:click={openLinkTrainerModal} width="full">Link Existing Trainer</Button>
+					</div>
 				</section>
 				<section>
 					<h2>Configuration</h2>
 					<div class="simple-type-field">
 						<SelectField label="Biome" options={biomeOptions} bind:value={biome} />
 						<SelectField label="Type in common" options={primaryTypeOptions} bind:value={pokemonType} />
+					</div>
+					<div class="simple-type-field">
+						<SelectField label="Generation" options={generationOptions} bind:value={generation} />
 					</div>
 					<div class="simple-type-field">
 						<SelectField label="Region Filter" options={regionTypeOptions} bind:value={regionType} />
@@ -851,6 +930,9 @@
 			<section>
 				<p>Level {selectedCombatant.level}</p>
 				<p>{selectedCombatant.numberOfPokemon} Pokémon</p>
+				{#if selectedCombatant.linkedTrainerId}
+					<p><a href="{Url.trainers(selectedCombatant.linkedTrainerId)}" target="_blank" rel="noopener">Ver ficha completa del entrenador ↗</a></p>
+				{/if}
 			</section>
 			<section>
 				<h3>Active Pokémon</h3>
@@ -988,6 +1070,54 @@
 				<div class="modal-actions">
 					<Button type="button" variant="ghost" on:click={cancelConfirmPrompt}>Cancel</Button>
 					<Button type="button" variant="danger" on:click={acceptConfirmPrompt}>Delete</Button>
+				</div>
+			</div>
+		</div>
+	{/if}
+
+	{#if linkTrainerModalOpen}
+		<div
+			class="modal-backdrop"
+			use:portal
+			role="button"
+			tabindex="-1"
+			on:click={(e) => { if (e.target === e.currentTarget) closeLinkTrainerModal() }}
+			on:keydown={(e) => { if (e.key === "Escape") closeLinkTrainerModal() }}
+		>
+			<div class="modal link-trainer-modal">
+				<h3>Link Existing Trainer</h3>
+				{#if linkTrainerError}
+					<p class="link-trainer-error">{linkTrainerError}</p>
+				{/if}
+				<div class="link-trainer-list">
+					{#if linkTrainerListLoading}
+						<Loader />
+					{:else if linkTrainerListValue}
+						{#if linkTrainerListValue.length === 0}
+							<p>No tenés entrenadores creados todavía.</p>
+						{:else}
+							<ul class="nolist no-space full-width">
+								{#each linkTrainerListValue as t (t.readKey)}
+									<li class="space-after">
+										<button
+											type="button"
+											class="selectable-bubble trainer-bubble"
+											disabled={linkTrainerSearching}
+											on:click={() => selectLinkedTrainer(t)}
+										>
+											<span class="trainer-name">{t.name}</span>
+											<span class="smaller-text">Lv. {t.level.data}</span>
+										</button>
+									</li>
+								{/each}
+							</ul>
+						{/if}
+					{:else if linkTrainerError}
+						<p>{linkTrainerError}</p>
+					{/if}
+				</div>
+				<div class="modal-actions">
+					<Button type="button" variant="ghost" on:click={closeLinkTrainerModal}>Cancel</Button>
 				</div>
 			</div>
 		</div>
@@ -1526,5 +1656,48 @@
 	.confirm-prompt-modal p {
 		margin: 0;
 		color: #fff;
+	}
+
+	.players-actions {
+		display: flex;
+		gap: 0.75em;
+	}
+
+	.linked-note {
+		font-size: var(--font-sz-venus);
+		opacity: 0.85;
+		margin: 0.25em 0 0;
+	}
+
+	.link-trainer-error {
+		color: var(--skin-danger-text);
+		margin: 0;
+	}
+
+	.link-trainer-modal {
+		width: min(30em, 95vw);
+		max-height: 80vh;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
+
+	.link-trainer-list {
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+	}
+
+	.link-trainer-modal .selectable-bubble.trainer-bubble {
+		width: 100%;
+		background: #fff;
+		color: #111;
+		border-radius: 2em;
+	}
+
+	.link-trainer-modal .selectable-bubble.trainer-bubble:hover,
+	.link-trainer-modal .selectable-bubble.trainer-bubble:focus {
+		background: #eee;
+		color: #111;
 	}
 </style>
