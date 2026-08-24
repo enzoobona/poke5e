@@ -89,7 +89,11 @@
 			hasStatusAndExp
 			{editable}
 			on:update={onUpdateHealth}
-		/>
+		>
+			<svelte:fragment slot="status-extra">
+				<slot name="actions-extra"></slot>
+			</svelte:fragment>
+		</HealthInfo>
 	</div>
 	<StatsInfo {pokemon} {species} />
 	{#if !hasImage}

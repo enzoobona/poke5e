@@ -8,7 +8,6 @@
 	import { rulesVersion } from "$lib/site/rules-version"
 	import { Url } from "$lib/site/url"
 	import { FlatDl, LoaderInline, VisuallyHidden } from "$lib/ui/elements"
-	import { NumericResourceField, type NumericChangeDetail } from "$lib/ui/forms"
 	import { MovesStore } from "../store"
 	import type { LearnedMove } from "./LearnedMove"
 
@@ -45,9 +44,6 @@
 	const attributeList = $derived(move?.power.attributeList())
 	const bestPowers = $derived(move?.power.bestAttribute(attributes))
 
-	const onChangePp = (e: CustomEvent<NumericChangeDetail>) => {
-		onupdatepp(e.detail.value)
-	}
 </script>
 
 {#if move && moveStats && attributeList && bestPowers}
@@ -56,14 +52,17 @@
 			<div class="hrow space-after-tiny">
 				<span class="flex-span bold"><a href="{Url.moves(value.moveId)}">{move.name}</a></span>
 				<span class="pp">
-					<VisuallyHidden><label for="current-hp">{move.name} PP</label></VisuallyHidden>
-					<span class="current">
-						{#if editable}
-							<NumericResourceField id="current-pp-{value.moveId}" value={currentPp} on:change={onChangePp}  />
-						{:else}
-							{currentPp}
-						{/if}
-					</span>
+					<VisuallyHidden><label for="current-pp-{value.moveId}">{move.name} PP</label></VisuallyHidden>
+					{#if editable}
+						<button
+							type="button"
+							id="current-pp-{value.moveId}"
+							class="pp-decrement"
+							disabled={currentPp <= 0}
+							on:click={() => onupdatepp(Math.max(0, currentPp - 1))}
+						>Use</button>
+					{/if}
+					<span class="current">{currentPp}</span>
 					<span class="max">/ {value.pp.max}</span>
 				</span>
 			</div>
@@ -158,8 +157,29 @@
 	.pp {
 		display: flex;
 		flex-direction: row;
-		gap: 0.25em;
+		gap: 0.35em;
 		align-items: center;
+	}
+
+	.pp-decrement {
+		background: rgba(255, 255, 255, 0.15);
+		color: inherit;
+		border: none;
+		border-radius: 0.3em;
+		padding: 0.2em 0.5em;
+		height: 2em;
+		line-height: 1;
+		cursor: pointer;
+		font-weight: bold;
+		font-size: 1em;
+		white-space: nowrap;
+	}
+	.pp-decrement:hover:not(:disabled) {
+		background: rgba(255, 255, 255, 0.3);
+	}
+	.pp-decrement:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
 	}
 
 	.rounded {

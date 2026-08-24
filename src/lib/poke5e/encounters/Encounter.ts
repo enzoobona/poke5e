@@ -5,12 +5,73 @@ import { provider as trainerProvider, type TrainerData } from "$lib/trainers/dat
 import type { LearnedMove, WithWriteKey } from "$lib/trainers/types"
 import { experienceAwarded } from "../experience"
 import type { Move } from "$lib/moves/Move"
+import { get } from "svelte/store"
+import { Nature, StandardNatures } from "$lib/pokemon/nature"
+import { PokemonGender } from "$lib/pokemon/gender"
+import { PokemonTeraType } from "$lib/pokemon/types"
+import { Speeds } from "$lib/dnd/movement"
+import { Senses } from "$lib/dnd/senses"
+import { Stab } from "$lib/pokemon/stab"
+import { TagList } from "$lib/poke5e/tags"
+import { experienceNeededAtLevel } from "$lib/poke5e/experience"
+import type { TrainerPokemon } from "$lib/trainers/types"
+import type { Data } from "$lib/DataClass"
+
+export const uniqueId = () =>
+	typeof crypto !== "undefined" && crypto.randomUUID
+		? crypto.randomUUID()
+		: Math.random().toString(36).slice(2)
+
+export type InitiativeRoll = {
+	natural: number,
+	total: number,
+}
+
+export type ActivePokemon = {
+	species: Data<PokemonSpecies>,
+	level: number,
+}
 
 export type EncounterActor = {
 	data: PokemonSpecies,
 	level: number,
 	count: number,
+	initiative?: number,
+	rolls?: InitiativeRoll[],
 }
+
+export type EncounterTrainer = {
+	id: string,
+	name: string,
+	level: number,
+	numberOfPokemon: number,
+	initiative?: number,
+	initiativeRoll?: InitiativeRoll,
+	activePokemon?: ActivePokemon,
+}
+
+export type CombatCreature = {
+	id: string,
+	kind: "pokemon",
+	species: PokemonSpecies,
+	pokemon: TrainerPokemon,
+	initiative: number,
+	initiativeNatural: number,
+}
+
+export type CombatTrainerEntry = {
+	id: string,
+	kind: "trainer",
+	name: string,
+	level: number,
+	numberOfPokemon: number,
+	initiative: number,
+	activePokemon?: { species: PokemonSpecies, level: number },
+}
+
+
+
+export type CombatCombatant = CombatCreature | CombatTrainerEntry
 
 export type EncounterGenerationOptions = {
 	pool: PokemonSpecies[],
@@ -196,6 +257,88 @@ export const Encounter = {
 
 		return trainer
 	},
+
+	rollInitiative(modifier: number): InitiativeRoll {
+		const natural = Math.floor(Math.random() * 20) + 1
+		return { natural, total: natural + modifier }
+	},
+
+	buildOneCombatCreature(species: PokemonSpecies, level: number, initiative: number, initiativeNatural: number, possibleMoves: Move[], nicknameOverride?: string): CombatCreature {
+		const targetLevel = new Level(level)
+
+		const withAdjustedStats = DynamicLeveler.adjustStats({
+			hp: species.data.hp,
+			level: new Level(species.data.minLevel),
+			hitDice: species.hitDice,
+			attributes: species.attributes,
+		}, targetLevel)
+
+		const ability = species.abilities.chooseRandom()
+
+		const chosenMoves = MovesetGenerator.chooseMoves(species.moves, targetLevel)
+		const learnedMoves = chosenMoves.map((moveId) => {
+			const matchingMove = possibleMoves?.find((moveData) => moveId === moveData.id)
+			return {
+				id: uniqueId(),
+				moveId: moveId,
+				pp: {
+					current: matchingMove?.pp ?? 5,
+					max: matchingMove?.pp ?? 5,
+				},
+				notes: "",
+			}
+		})
+
+		const pokemon = {
+			id: uniqueId(),
+			trainerId: "combat-tracker",
+			pokemonId: species.id,
+			nickname: nicknameOverride ?? species.name,
+			type: species.type,
+			nature: new Nature(get(StandardNatures)[0]),
+			level: withAdjustedStats.level,
+			exp: experienceNeededAtLevel(withAdjustedStats.level.data),
+			gender: PokemonGender.None,
+			attributes: withAdjustedStats.attributes,
+			ac: species.data.ac,
+			ability: undefined,
+			abilities: ability ? [ability] : [],
+			hp: {
+				current: withAdjustedStats.hp,
+				max: withAdjustedStats.hp,
+			},
+			hitDice: {
+				current: withAdjustedStats.level.data,
+				max: withAdjustedStats.level.data,
+			},
+			proficiencies: species.skills.copy(),
+			savingThrows: [...species.data.saves],
+			moves: learnedMoves,
+			items: [],
+			notes: species.data.notes ?? "",
+			teraType: new PokemonTeraType(species.type.primary),
+			status: null,
+			isShiny: false,
+			feats: [],
+			customSize: undefined,
+			customHitDiceSize: undefined,
+			speeds: new Speeds({}),
+			senses: new Senses({}),
+			bond: {
+				level: 0,
+				points: { current: 0, max: 0 },
+			},
+			stab: new Stab({ base: "default", bonus: 0 }),
+			tags: TagList.empty(),
+		} as unknown as TrainerPokemon
+
+		return {
+			id: pokemon.id,
+			kind: "pokemon",
+			species,
+			pokemon,
+			initiative,
+			initiativeNatural,
+		}
+	},
 } as const
-
-

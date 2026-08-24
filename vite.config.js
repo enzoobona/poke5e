@@ -22,7 +22,11 @@ export default defineConfig({
 	test: {
 		setupFiles: [path.join("src", "test", "setup.ts")],
 		browser: {
-			provider: playwright(),
+			provider: playwright({
+				launchOptions: {
+					channel: "chromium",
+				},
+			}),
 			enabled: true,
 			headless: true,
 			instances: [ { browser: "chromium" } ],

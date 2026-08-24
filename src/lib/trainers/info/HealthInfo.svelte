@@ -116,6 +116,7 @@
 				{#if editable}
 					<StatusEditor id="current-status" value={statusCur} on:change={onChangeStatus} />
 				{/if}
+				<slot name="status-extra"></slot>
 			</span>
 		</span>
 		<span class="exp">
